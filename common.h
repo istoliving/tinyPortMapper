@@ -5,8 +5,10 @@
  *      Author: wangyu
  */
 
-#ifndef COMMON_H_
-#define COMMON_H_
+#pragma once
+
+//#ifndef COMMON_H_
+//#define COMMON_H_
 //#define __STDC_FORMAT_MACROS 1
 #include <inttypes.h>
 
@@ -50,6 +52,10 @@
 #include<unordered_set>
 #include<map>
 #include<list>
+#include <memory>
+#include <vector>
+#include <deque>
+//#include <pair>
 using  namespace std;
 
 
@@ -67,11 +73,14 @@ typedef u64_t my_time_t;
 //const int max_data_len=2200;
 //const int buf_len=max_data_len+200;
 
-const int max_data_len_udp=65536;
-const int max_data_len_tcp=4096;
+const int max_addr_len=100;
 
-const u32_t conn_timeout_udp=180000;
+const int max_data_len_udp=65536;
+const int max_data_len_tcp=4096*4;
+
+const u32_t conn_timeout_udp=240000;
 const u32_t conn_timeout_tcp=360000;
+
 const int max_conn_num=20000;
 
 const int conn_clear_ratio=30;
@@ -83,96 +92,161 @@ const u32_t timer_interval=400;//this should be smaller than heartbeat_interval 
 
 extern int about_to_exit;
 
-
-
 extern int socket_buf_size;
-
-
-typedef u32_t id_t;
-
-typedef u64_t iv_t;
-
-typedef u64_t padding_t;
-
-typedef u64_t anti_replay_seq_t;
 
 typedef u64_t fd64_t;
 
-//enum dest_type{none=0,type_fd64_ip_port,type_fd64,type_fd64_ip_port_conv,type_fd64_conv/*,type_fd*/};
-enum dest_type{none=0,type_fd64_ip_port,type_fd64,type_fd,type_write_fd,type_fd_ip_port/*,type_fd*/};
+struct not_copy_able_t
+{
+	not_copy_able_t()
+	{
 
-struct ip_port_t
-{
-	u32_t ip;
-	int port;
-	void from_u64(u64_t u64);
-	u64_t to_u64();
-	char * to_s();
-};
-
-struct fd64_ip_port_t
-{
-	fd64_t fd64;
-	ip_port_t ip_port;
-};
-struct fd_ip_port_t
-{
-	int fd;
-	ip_port_t ip_port;
-};
-union inner_t
-{
-	fd64_t fd64;
-	int fd;
-	fd64_ip_port_t fd64_ip_port;
-	fd_ip_port_t fd_ip_port;
-};
-struct dest_t
-{
-	dest_type type;
-	inner_t inner;
-	u32_t conv;
-	int cook=0;
+	}
+	not_copy_able_t(const not_copy_able_t &other)
+	{
+		assert(0==1);
+	}
+	not_copy_able_t & operator=(const not_copy_able_t &other)
+	{
+		assert(0==1);
+	}
 };
 
-struct tcp_info_t
+struct tcp_info_t:not_copy_able_t
 {
 	fd64_t fd64;
 	epoll_event ev;
+	//char * data;
 	char data[max_data_len_tcp+200];//use a larger buffer than udp
 	char * begin;
 	int data_len;
 	tcp_info_t()
 	{
+		//data=(char*)malloc(max_data_len_tcp+200);
+
 		begin=data;
 		data_len=0;
+
 	}
+	~tcp_info_t()
+	{
+		//if(data)
+			//free(data);
+	}
+	/*
+	void free_memory()
+	{
+		free(data);
+		data=0;
+		begin=0;
+	}*/
 };
 
-struct tcp_pair_t
+u32_t djb2(unsigned char *str,int len);
+u32_t sdbm(unsigned char *str,int len);
+
+struct address_t  //TODO scope id
+{
+	struct hash_function
+	{
+	    u32_t operator()(const address_t &key) const
+		{
+	    	return sdbm((unsigned char*)&key.inner,sizeof(key.inner));
+		}
+	};
+
+	union storage_t //sockaddr_storage is too huge, we dont use it.
+	{
+		sockaddr_in ipv4;
+		sockaddr_in6 ipv6;
+	};
+	storage_t inner;
+
+	address_t()
+	{
+		clear();
+	}
+	void clear()
+	{
+		memset(&inner,0,sizeof(inner));
+	}
+	int from_str(char * str);
+
+	int from_sockaddr(sockaddr *,socklen_t);
+
+	char* get_str();
+	void to_str(char *);
+
+	inline u32_t get_type()
+	{
+		return ((sockaddr*)&inner)->sa_family;
+	}
+
+	inline u32_t get_len()
+	{
+		u32_t type=get_type();
+		switch(type)
+		{
+			case AF_INET:
+				return sizeof(sockaddr_in);
+			case AF_INET6:
+				return sizeof(sockaddr_in6);
+			default:
+				assert(0==1);
+		}
+		return -1;
+	}
+
+    bool operator == (const address_t &b) const
+    {
+    	//return this->data==b.data;
+        return memcmp(&this->inner,&b.inner,sizeof(this->inner))==0;
+    }
+
+    int new_connected_udp_fd();
+};
+
+
+struct udp_pair_t:not_copy_able_t
+{
+	address_t adress;
+	fd64_t fd64;
+	//u64_t last_active_time;
+	char addr_s[max_addr_len];
+	list<udp_pair_t>::iterator it;
+	udp_pair_t()
+	{
+		addr_s[0]=0;
+	}
+	//int not_used=0;
+};
+
+struct tcp_pair_t:not_copy_able_t
 {
 	tcp_info_t local;
 	tcp_info_t remote;
-	u64_t last_active_time;
+	//u64_t last_active_time;
 	list<tcp_pair_t>::iterator it;
-	char ip_port_s[30];
-	int not_used=0;
+	char addr_s[max_addr_len];
+	//int not_used=0;
+	tcp_pair_t()
+	{
+		addr_s[0]=0;
+	}
 };
 
-
-struct fd_info_t
+struct fd_info_t:not_copy_able_t
 {
 	int is_tcp=0;
 	tcp_pair_t *tcp_pair_p=0;
+	udp_pair_t *udp_pair_p=0;
 };
 
 
 u64_t get_current_time();
 u64_t get_current_time_us();
 u64_t pack_u64(u32_t a,u32_t b);
-
 u32_t get_u64_h(u64_t a);
-
 u32_t get_u64_l(u64_t a);
 
 void write_u16(char *,u16_t a);
@@ -196,37 +270,17 @@ u64_t hton64(u64_t a);
 bool larger_than_u16(uint16_t a,uint16_t b);
 bool larger_than_u32(u32_t a,u32_t b);
 void setnonblocking(int sock);
+
 int set_buf_size(int fd,int socket_buf_size,int force_socket_buf=0);
 
-unsigned short csum(const unsigned short *ptr,int nbytes);
-
 void  signal_handler(int sig);
-int numbers_to_char(id_t id1,id_t id2,id_t id3,char * &data,int &len);
-int char_to_numbers(const char * data,int len,id_t &id1,id_t &id2,id_t &id3);
 
-void myexit(int a);
-
-int add_iptables_rule(char *);
-
-int clear_iptables_rule();
 void get_true_random_chars(char * s,int len);
 int random_between(u32_t a,u32_t b);
 
-int set_timer_ms(int epollfd,int &timer_fd,u32_t timer_interval);
 
 int round_up_div(int a,int b);
 
-int create_fifo(char * file);
-/*
-int create_new_udp(int &new_udp_fd,int remote_address_uint32,int remote_port);
-*/
-
-int new_listen_socket(int &fd,u32_t ip,int port);
-
-int create_new_udp(int &new_udp_fd,u32_t ip,int port);
-
 int set_timer(int epollfd,int &timer_fd);
 
-int sendto_u64(int fd,char * buf, int len,int flags, u64_t u64);
-
-#endif /* COMMON_H_ */
+//#endif /* COMMON_H_ */

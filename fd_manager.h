@@ -5,8 +5,10 @@
  *      Author: root
  */
 
-#ifndef FD_MANAGER_H_
-#define FD_MANAGER_H_
+#pragma once
+
+//#ifndef FD_MANAGER_H_
+//#define FD_MANAGER_H_
 
 #include "common.h"
 //#include "packet.h"
@@ -23,16 +25,9 @@ struct fd_manager_t   //conver fd to a uniq 64bit number,avoid fd value conflict
 	void reserve(int n);
 	u64_t create(int fd);
 	fd_manager_t();
-
-	void fd_close(int fd) //tmp solution
-	{
-		assert(fd_to_fd64_mp.find(fd)!=fd_to_fd64_mp.end());
-		fd64_close(fd_to_fd64_mp[fd]);
-	}
-
 private:
 	u64_t counter;
-	unordered_map<int,fd64_t> fd_to_fd64_mp;
+	unordered_map<int,fd64_t> fd_to_fd64_mp;  //TODO combine those maps
 	unordered_map<fd64_t,int> fd64_to_fd_mp;
 	unordered_map<fd64_t,fd_info_t> fd_info_mp;
 	int fd_exist(int fd);
@@ -42,4 +37,4 @@ private:
 
 extern fd_manager_t fd_manager;
 
-#endif /* FD_MANAGER_H_ */
+//#endif /* FD_MANAGER_H_ */

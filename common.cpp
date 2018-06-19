@@ -185,31 +185,6 @@ void setnonblocking(int sock) {
 
 }
 
-/*
-    Generic checksum calculation function
-*/
-unsigned short csum(const unsigned short *ptr,int nbytes) {
-    register long sum;
-    unsigned short oddbyte;
-    register short answer;
-
-    sum=0;
-    while(nbytes>1) {
-        sum+=*ptr++;
-        nbytes-=2;
-    }
-    if(nbytes==1) {
-        oddbyte=0;
-        *((u_char*)&oddbyte)=*(u_char*)ptr;
-        sum+=oddbyte;
-    }
-
-    sum = (sum>>16)+(sum & 0xffff);
-    sum = sum + (sum>>16);
-    answer=(short)~sum;
-
-    return(answer);
-}
 int set_buf_size(int fd,int socket_buf_size,int force_socket_buf)
 {
 	if(force_socket_buf)
@@ -254,97 +229,6 @@ void  signal_handler(int sig)
     // myexit(0);
 }
 
-/*
-int numbers_to_char(id_t id1,id_t id2,id_t id3,char * &data,int &len)
-{
-	static char buf[buf_len];
-	data=buf;
-	id_t tmp=htonl(id1);
-	memcpy(buf,&tmp,sizeof(tmp));
-
-	tmp=htonl(id2);
-	memcpy(buf+sizeof(tmp),&tmp,sizeof(tmp));
-
-	tmp=htonl(id3);
-	memcpy(buf+sizeof(tmp)*2,&tmp,sizeof(tmp));
-
-	len=sizeof(id_t)*3;
-	return 0;
-}
-
-
-int char_to_numbers(const char * data,int len,id_t &id1,id_t &id2,id_t &id3)
-{
-	if(len<int(sizeof(id_t)*3)) return -1;
-	id1=ntohl(  *((id_t*)(data+0)) );
-	id2=ntohl(  *((id_t*)(data+sizeof(id_t))) );
-	id3=ntohl(  *((id_t*)(data+sizeof(id_t)*2)) );
-	return 0;
-}
-*/
-
-bool larger_than_u32(u32_t a,u32_t b)
-{
-
-	u32_t smaller,bigger;
-	smaller=min(a,b);//smaller in normal sense
-	bigger=max(a,b);
-	u32_t distance=min(bigger-smaller,smaller+(0xffffffff-bigger+1));
-	if(distance==bigger-smaller)
-	{
-		if(bigger==a)
-		{
-			return 1;
-		}
-		else
-		{
-			return 0;
-		}
-	}
-	else
-	{
-		if(smaller==b)
-		{
-			return 0;
-		}
-		else
-		{
-			return 1;
-		}
-	}
-}
-
-bool larger_than_u16(uint16_t a,uint16_t b)
-{
-
-	uint16_t smaller,bigger;
-	smaller=min(a,b);//smaller in normal sense
-	bigger=max(a,b);
-	uint16_t distance=min(bigger-smaller,smaller+(0xffff-bigger+1));
-	if(distance==bigger-smaller)
-	{
-		if(bigger==a)
-		{
-			return 1;
-		}
-		else
-		{
-			return 0;
-		}
-	}
-	else
-	{
-		if(smaller==b)
-		{
-			return 0;
-		}
-		else
-		{
-			return 1;
-		}
-	}
-}
-
 void get_true_random_chars(char * s,int len)
 {
 	int size=read(random_fd.get_fd(),s,len);
@@ -366,51 +250,6 @@ int random_between(u32_t a,u32_t b)
 	else return a+get_true_random_number()%(b+1-a);
 }
 
-
-int set_timer_ms(int epollfd,int &timer_fd,u32_t timer_interval)
-{
-	int ret;
-	epoll_event ev;
-
-	itimerspec its;
-	memset(&its,0,sizeof(its));
-
-	if((timer_fd=timerfd_create(CLOCK_MONOTONIC,TFD_NONBLOCK)) < 0)
-	{
-		mylog(log_fatal,"timer_fd create error\n");
-		myexit(1);
-	}
-	its.it_interval.tv_sec=(timer_interval/1000);
-	its.it_interval.tv_nsec=(timer_interval%1000)*1000ll*1000ll;
-	its.it_value.tv_nsec=1; //imidiately
-	timerfd_settime(timer_fd,0,&its,0);
-
-
-	ev.events = EPOLLIN;
-	ev.data.fd = timer_fd;
-
-	ret=epoll_ctl(epollfd, EPOLL_CTL_ADD, timer_fd, &ev);
-	if (ret < 0) {
-		mylog(log_fatal,"epoll_ctl return %d\n", ret);
-		myexit(-1);
-	}
-	return 0;
-}
-void ip_port_t::from_u64(u64_t u64)
-{
-	ip=get_u64_h(u64);
-	port=get_u64_l(u64);
-}
-u64_t ip_port_t::to_u64()
-{
-	return pack_u64(ip,port);
-}
-char * ip_port_t::to_s()
-{
-	static char res[40];
-	sprintf(res,"%s:%d",my_ntoa(ip),port);
-	return res;
-}
 
 int round_up_div(int a,int b)
 {
@@ -483,36 +322,6 @@ int new_listen_socket(int &fd,u32_t ip,int port)
 	return 0;
 }
 
-int create_new_udp(int &new_udp_fd,u32_t ip,int port)
-{
-	struct sockaddr_in remote_addr_in;
-
-	socklen_t slen = sizeof(sockaddr_in);
-	memset(&remote_addr_in, 0, sizeof(remote_addr_in));
-	remote_addr_in.sin_family = AF_INET;
-	remote_addr_in.sin_port = htons(port);
-	remote_addr_in.sin_addr.s_addr = ip;
-
-	new_udp_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (new_udp_fd < 0) {
-		mylog(log_warn, "create udp_fd error\n");
-		return -1;
-	}
-	setnonblocking(new_udp_fd);
-	set_buf_size(new_udp_fd,socket_buf_size);
-
-	mylog(log_debug, "created new udp_fd %d\n", new_udp_fd);
-	int ret = connect(new_udp_fd, (struct sockaddr *) &remote_addr_in, slen);
-	if (ret != 0) {
-		mylog(log_warn, "udp fd connect fail %d %s\n",ret,strerror(errno));
-		close(new_udp_fd);
-		return -1;
-	}
-
-
-	return 0;
-}
-
 int set_timer(int epollfd,int &timer_fd)
 {
 	int ret;
@@ -544,19 +353,197 @@ int set_timer(int epollfd,int &timer_fd)
 	return 0;
 }
 
-int sendto_u64 (int fd,char * buf, int len,int flags, u64_t u64)
+int address_t::from_str(char *str)
+{
+	clear();
+
+	char ip_addr_str[100];u32_t port;
+	mylog(log_info,"parsing address: %s\n",str);
+	int is_ipv6=0;
+	if(sscanf(str, "[%[^]]]:%u", ip_addr_str,&port)==2)
+	{
+		mylog(log_info,"its an ipv6 adress\n");
+		inner.ipv6.sin6_family=AF_INET6;
+		is_ipv6=1;
+	}
+	else if(sscanf(str, "%[^:]:%u", ip_addr_str,&port)==2)
+	{
+		mylog(log_info,"its an ipv4 adress\n");
+		inner.ipv4.sin_family=AF_INET;
+	}
+	else
+	{
+		mylog(log_error,"failed to parse\n");
+		myexit(-1);
+	}
+
+	mylog(log_info,"ip_address is {%s}, port is {%u}\n",ip_addr_str,port);
+
+	if(port>65535)
+	{
+		mylog(log_error,"invalid port: %d\n",port);
+		myexit(-1);
+	}
+
+	int ret=-100;
+	if(is_ipv6)
+	{
+		ret=inet_pton(AF_INET6, ip_addr_str,&(inner.ipv6.sin6_addr));
+		inner.ipv6.sin6_port=htons(port);
+		if(ret==0)  // 0 if address type doesnt match
+		{
+			mylog(log_error,"ip_addr %s is not an ipv6 address, %d\n",ip_addr_str,ret);
+			myexit(-1);
+		}
+		else if(ret==1) // inet_pton returns 1 on success
+		{
+			//okay
+		}
+		else
+		{
+			mylog(log_error,"ip_addr %s is invalid, %d\n",ip_addr_str,ret);
+			myexit(-1);
+		}
+	}
+	else
+	{
+		ret=inet_pton(AF_INET, ip_addr_str,&(inner.ipv4.sin_addr));
+		inner.ipv4.sin_port=htons(port);
+
+		if(ret==0)
+		{
+			mylog(log_error,"ip_addr %s is not an ipv4 address, %d\n",ip_addr_str,ret);
+			myexit(-1);
+		}
+		else if(ret==1)
+		{
+			//okay
+		}
+		else
+		{
+			mylog(log_error,"ip_addr %s is invalid, %d\n",ip_addr_str,ret);
+			myexit(-1);
+		}
+	}
+
+	return 0;
+}
+
+char * address_t::get_str()
+{
+	static char res[max_addr_len];
+	to_str(res);
+	return res;
+}
+void address_t::to_str(char * s)
+{
+	//static char res[max_addr_len];
+	char ip_addr[max_addr_len];
+	u32_t port;
+	const char * ret=0;
+	if(get_type()==AF_INET6)
+	{
+		ret=inet_ntop(AF_INET6, &inner.ipv6.sin6_addr, ip_addr,max_addr_len);
+		port=inner.ipv6.sin6_port;
+	}
+	else if(get_type()==AF_INET)
+	{
+		ret=inet_ntop(AF_INET, &inner.ipv4.sin_addr, ip_addr,max_addr_len);
+		port=inner.ipv4.sin_port;
+	}
+	else
+	{
+		assert(0==1);
+	}
+
+	if(ret==0) //NULL on failure
+	{
+		mylog(log_error,"inet_ntop failed\n");
+		myexit(-1);
+	}
+
+	port=ntohs(port);
+
+	ip_addr[max_addr_len-1]=0;
+	if(get_type()==AF_INET6)
+	{
+		sprintf(s,"[%s]:%u",ip_addr,(u32_t)port);
+	}else
+	{
+		sprintf(s,"%s:%u",ip_addr,(u32_t)port);
+	}
+
+	//return res;
+}
+
+int address_t::from_sockaddr(sockaddr * addr,socklen_t slen)
+{
+	memset(&inner,0,sizeof(inner));
+	if(addr->sa_family==AF_INET6)
+	{
+		assert(slen==sizeof(sockaddr_in6));
+		inner.ipv6= *( (sockaddr_in6*) addr );
+
+	}
+	else if(addr->sa_family==AF_INET)
+	{
+		assert(slen==sizeof(sockaddr_in));
+		inner.ipv4= *( (sockaddr_in*) addr );
+	}
+	else
+	{
+		assert(0==1);
+	}
+	return 0;
+}
+
+int address_t::new_connected_udp_fd()
 {
 
-	sockaddr_in tmp_sockaddr;
+	int new_udp_fd;
+	new_udp_fd = socket(get_type(), SOCK_DGRAM, IPPROTO_UDP);
+	if (new_udp_fd < 0) {
+		mylog(log_warn, "create udp_fd error\n");
+		return -1;
+	}
+	setnonblocking(new_udp_fd);
+	set_buf_size(new_udp_fd,socket_buf_size);
 
-	memset(&tmp_sockaddr,0,sizeof(tmp_sockaddr));
-	tmp_sockaddr.sin_family = AF_INET;
-	tmp_sockaddr.sin_addr.s_addr = (u64 >> 32u);
+	mylog(log_debug, "created new udp_fd %d\n", new_udp_fd);
+	int ret = connect(new_udp_fd, (struct sockaddr *) &inner, get_len());
+	if (ret != 0) {
+		mylog(log_warn, "udp fd connect fail %d %s\n",ret,strerror(errno));
+		close(new_udp_fd);
+		return -1;
+	}
 
-	tmp_sockaddr.sin_port = htons(uint16_t((u64 << 32u) >> 32u));
-
-	return sendto(fd, buf,
-			len , 0,
-			(struct sockaddr *) &tmp_sockaddr,
-			sizeof(tmp_sockaddr));
+	return new_udp_fd;
 }
+
+u32_t djb2(unsigned char *str,int len)
+{
+	 u32_t hash = 5381;
+     int c;
+     int i=0;
+    while(c = *str++,i++!=len)
+    {
+         hash = ((hash << 5) + hash)^c; /* (hash * 33) ^ c */
+    }
+
+     hash=htonl(hash);
+     return hash;
+ }
+
+u32_t sdbm(unsigned char *str,int len)
+{
+     u32_t hash = 0;
+     int c;
+     int i=0;
+	while(c = *str++,i++!=len)
+	{
+		 hash = c + (hash << 6) + (hash << 16) - hash;
+	}
+     //hash=htonl(hash);
+     return hash;
+ }
+
